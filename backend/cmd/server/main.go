@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
-	"path/filepath"
+	"os/signal"
+	"syscall"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/jamoowen/reminiscer/internal/config"
@@ -12,7 +14,8 @@ import (
 	"github.com/jamoowen/reminiscer/internal/middleware"
 	"github.com/jamoowen/reminiscer/internal/models"
 	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"golang.org/x/time/rate"
 )
 
 type CustomValidator struct {
@@ -27,60 +30,88 @@ func (cv *CustomValidator) Validate(i interface{}) error {
 }
 
 func main() {
-	// Initialize configuration
-	cfg := config.GetConfig()
-
-	// Set up database
-	dbPath := filepath.Join(".", "data", "reminiscer.db")
-	err := os.MkdirAll(filepath.Dir(dbPath), 0755)
+	// Load configuration
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Failed to create database directory: %v", err)
+		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	db, err := database.New(dbPath)
+	// Initialize database
+	log.Printf("Initializing database at %s\n", cfg.Database.Path)
+	db, err := database.New(cfg.Database.Path)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
 	// Run migrations
+	log.Print("Running migrations")
 	if err := db.Migrate("./migrations"); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Initialize store
+	fmt.Print("Initializing store")
 	store := models.NewSQLiteStore(db.DB)
 
 	// Initialize Echo
+	fmt.Print("Initializing Echo")
 	e := echo.New()
 	e.Validator = &CustomValidator{validator: validator.New()}
 
 	// Middleware
-	e.Use(echomiddleware.Logger())
-	e.Use(echomiddleware.Recover())
-	e.Use(echomiddleware.CORS())
+	e.Use(echoMiddleware.Logger())
+	e.Use(echoMiddleware.Recover())
+
+	// Configure CORS
+	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
+		AllowOrigins: []string{cfg.Security.AllowedOrigins},
+		AllowMethods: []string{echo.GET, echo.PUT, echo.POST, echo.DELETE, echo.PATCH},
+	}))
+
+	// Rate limiting
+	if !cfg.IsDevelopment() {
+		e.Use(echoMiddleware.RateLimiter(echoMiddleware.NewRateLimiterMemoryStore(
+			rate.Limit(cfg.Security.RateLimitRequests),
+		)))
+	}
 
 	// Initialize auth middleware
+	fmt.Print("Initializing auth middleware")
 	authMid := middleware.NewAuthMiddleware(cfg, store)
 
 	// Initialize handlers
+	fmt.Print("Initializing handlers")
 	authHandler := handlers.NewAuthHandler(store, authMid)
 	quoteHandler := handlers.NewQuoteHandler(store, authMid)
 	groupHandler := handlers.NewGroupHandler(store, authMid)
 
 	// Set up routes
+	fmt.Print("Setting up routes")
 	authHandler.SetupRoutes(e)
 	quoteHandler.SetupRoutes(e)
 	groupHandler.SetupRoutes(e)
 
+	// Graceful shutdown
+	go func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+
+		if err := e.Shutdown(nil); err != nil {
+			log.Printf("Error during server shutdown: %v", err)
+		}
+	}()
+
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	serverAddr := fmt.Sprintf(":%s", cfg.Server.Port)
+	if cfg.IsDevelopment() {
+		log.Printf("Server starting in development mode on http://localhost%s", serverAddr)
+	} else {
+		log.Printf("Server starting in production mode on port %s", cfg.Server.Port)
 	}
 
-	log.Printf("Server starting on port %s", port)
-	if err := e.Start(":" + port); err != nil {
+	if err := e.Start(serverAddr); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

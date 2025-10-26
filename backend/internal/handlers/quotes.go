@@ -22,6 +22,16 @@ func NewQuoteHandler(store models.Store, authMid *middleware.AuthMiddleware) *Qu
 	}
 }
 
+// SetupRoutes sets up the quote routes
+func (h *QuoteHandler) SetupRoutes(e *echo.Echo) {
+	quotes := e.Group("/quotes", h.authMid.Authenticate)
+	quotes.POST("", h.Create)
+	quotes.GET("", h.List)
+	quotes.GET("/random", h.GetRandom)
+	quotes.PATCH("/:id", h.Update)
+	quotes.DELETE("/:id", h.Delete)
+}
+
 // Create handles creating a new quote
 func (h *QuoteHandler) Create(c echo.Context) error {
 	user := middleware.GetUserFromContext(c)
@@ -219,14 +229,4 @@ func (h *QuoteHandler) Delete(c echo.Context) error {
 	}
 
 	return api.SendSuccess(c, http.StatusOK, nil)
-}
-
-// SetupRoutes sets up the quote routes
-func (h *QuoteHandler) SetupRoutes(e *echo.Echo) {
-	quotes := e.Group("/quotes", h.authMid.Authenticate)
-	quotes.POST("", h.Create)
-	quotes.GET("", h.List)
-	quotes.GET("/random", h.GetRandom)
-	quotes.PATCH("/:id", h.Update)
-	quotes.DELETE("/:id", h.Delete)
 }

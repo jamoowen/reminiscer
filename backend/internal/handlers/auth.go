@@ -38,7 +38,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	existingUser, err := h.store.Users().GetByEmail(req.Email)
 	if err != nil {
 		if errors.IsCode(err, errors.CodeDatabaseError) {
-			return api.SendError(c, http.StatusInternalServerError, errors.CodeDatabaseError, "Database error occurred")
+			return api.SendError(c, http.StatusInternalServerError, errors.CodeDatabaseError, "Internal server error")
 		}
 		return api.SendError(c, http.StatusInternalServerError, errors.CodeInternalError, "Error checking existing user")
 	}

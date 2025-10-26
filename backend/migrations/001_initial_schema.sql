@@ -1,3 +1,4 @@
+-- Enable foreign key support
 PRAGMA foreign_keys = ON;
 
 -- Users table
@@ -7,8 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT NOT NULL,
     hashed_password TEXT NOT NULL,
     authenticated BOOLEAN DEFAULT FALSE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT email_format CHECK (email LIKE '%@%.%')
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS quotes (
     group_id TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uploader_id),
+    FOREIGN KEY (uploader_id) REFERENCES users(id),
     FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE
 );
 

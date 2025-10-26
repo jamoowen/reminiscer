@@ -38,7 +38,7 @@ func (m *AuthMiddleware) GenerateToken(user *models.User) (string, error) {
 		UserID: user.ID,
 		Email:  user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.config.JWT.TokenExpiration())),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(m.config.JWT.ExpirationHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
